@@ -2,7 +2,7 @@ use c_minus_token::*;
 use std::io::{Bytes, Read};
 use std::iter::Peekable;
 
-use crate::{LexerError, LexerResult};
+use crate::{Lexer, LexerError, LexerResult};
 
 pub struct MinusLexer <I: Read> {
     row: usize,
@@ -77,7 +77,7 @@ impl<I: Read> MinusLexer<I> {
 
         match self.peek() {
             Some(b'=') => self.convert_char(Token::Operator(Operators::NotEqual)),
-            _ => Ok(Token::Operator(Operators::LogicNot)),
+            _ => Err(LexerError::UnexpectedChar('!', vec![])),
         }
     }
 
@@ -140,7 +140,8 @@ impl<I: Read> MinusLexer<I> {
     fn parse_add(&mut self) -> LexerResult {
         self.bump();
 
-        match self.peek() {            Some(c) => match c {
+        match self.peek() {
+            Some(c) => match c {
                 b'+' => {
                     self.bump();
                     Ok(Token::Operator(Operators::DoubleAdd))
@@ -260,6 +261,8 @@ impl<I: Read> Iterator for MinusLexer<I> {
     }
 }
 
+impl<I: Read> Lexer for MinusLexer<I> {}
+
 #[cfg(test)]
 mod test {
 
@@ -349,7 +352,7 @@ mod test {
     #[test]
     #[should_panic]
     fn test_lexer_panic() {
-        let src = "/*asd";
+        let src = "/*asd*";
 
         let lexer = MinusLexer::new(src.as_bytes());
         let _ = lexer.count();

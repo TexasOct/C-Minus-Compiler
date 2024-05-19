@@ -1,14 +1,12 @@
 use c_minus_lexer::lexer;
 
-
 fn main() {
-    let s =
-"int main() {
+    let s = "int main() {
     int a = 4;
-    for(;a < 5; a++) {
-        printf(\"hello\");
+    while (a > 0) {
+        a = a - 1;
     }
-    printf(\"%d\", a);
+    return a;
 }";
     let mut lexer = lexer::MinusLexer::new(s.as_bytes());
 

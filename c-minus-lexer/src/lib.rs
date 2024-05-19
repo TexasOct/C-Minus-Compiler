@@ -1,5 +1,7 @@
-mod dfa;
 pub mod lexer;
+
+#[cfg(feature = "regex")]
+pub mod regex_lexer;
 
 use c_minus_token::Token;
 
@@ -11,3 +13,5 @@ pub enum LexerError {
     UnexpectEnd,
     UnexpectedChar(char, Vec<char>),
 }
+
+pub trait Lexer: Iterator<Item = Token> {}

@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 c_minus_token = { path = "../c-minus-token" }
+c_minus_lexer = { path = "../c-minus-lexer" }
 id_tree = "*"
+log = "*"

@@ -10,3 +10,6 @@ c_minus_token = { path = "../c-minus-token" }
 name = "simple"
 path = "./examples/simple.rs"
 
+[features]
+regex = []
+

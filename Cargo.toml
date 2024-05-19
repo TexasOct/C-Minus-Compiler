@@ -11,3 +11,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+c_minus_lexer = { path = "c-minus-lexer" }
+c_minus_parser = { path = "c-minus-parser" }
+c_minus_token = { path = "c-minus-token" }
+clap = { version = "4.5.4", features = ["cargo"] }
