@@ -4,40 +4,12 @@ use std::fmt::Formatter;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum KeyWords {
-    Auto,
-    Break,
-    Case,
-    Char,
-    Const,
-    Continue,
-    Default,
-    Do,
-    Double,
-    Else,
-    Enum,
-    Extern,
-    Float,
-    For,
-    Goto,
     If,
-    Inline,
+    Else,
     Int,
-    Long,
-    Register,
-    Restrict,
-    Return,
-    Short,
-    Signed,
-    Sizeof,
-    Static,
-    Struct,
-    Switch,
-    Typedef,
-    Union,
-    Unsigned,
     Void,
-    Volatile,
     While,
+    Return
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,10 +19,7 @@ pub enum Type {
     UnsignedShort,
     SignedInt,
     UnsignedInt,
-    Float,
-    Double,
     Void,
-    Class,
     Func(Vec<Type>, Box<Type>),
     Ptr(Box<Type>),
 }
@@ -58,15 +27,8 @@ pub enum Type {
 impl KeyWords {
     pub fn is_type(&self) -> bool {
         match self {
-            // Char | Short | Int | Unsigned | Signed | Long | Double | Float => true,
-            &KeyWords::Char => true,
-            &KeyWords::Short => true,
+            // Int | Void => true,
             &KeyWords::Int => true,
-            &KeyWords::Signed => true,
-            &KeyWords::Unsigned => true,
-            &KeyWords::Long => true,
-            &KeyWords::Double => true,
-            &KeyWords::Float => true,
             &KeyWords::Void => true,
             _ => false,
         }
@@ -85,8 +47,6 @@ pub enum Operators {
     Add,
     Assign,
     AddEqual,
-    And,
-    Arrow,
     DoubleAdd,
     DoubleMinus,
     Division,
@@ -95,9 +55,7 @@ pub enum Operators {
     GreaterEqual,
     Less,
     LessEqual,
-    LogicAnd,
     LogicNot,
-    LogicOr,
     Minus,
     MinusEqual,
     Mul,
@@ -120,8 +78,6 @@ pub enum Brackets {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Numbers {
     SignedInt(isize),
-    Float(f32),
-    Double(f64),
 }
 
 impl Numbers {
@@ -137,9 +93,7 @@ pub enum Token {
     Bracket(Brackets),
     Comment(String),
     Comma,
-    Dot,
     KeyWord(KeyWords),
-    LiteralStr(String),
     Number(Numbers),
     Operator(Operators),
     Preprocessor(String),
@@ -163,40 +117,12 @@ impl Token {
 
     pub fn key_word(k: &str) -> Token {
         const KEY_TOKEN: &'static [KeyWords] = &[
-            KeyWords::Auto,
-            KeyWords::Break,
-            KeyWords::Case,
-            KeyWords::Char,
-            KeyWords::Const,
-            KeyWords::Continue,
-            KeyWords::Default,
-            KeyWords::Do,
-            KeyWords::Double,
-            KeyWords::Else,
-            KeyWords::Enum,
-            KeyWords::Extern,
-            KeyWords::Float,
-            KeyWords::For,
-            KeyWords::Goto,
             KeyWords::If,
-            KeyWords::Inline,
+            KeyWords::Else,
             KeyWords::Int,
-            KeyWords::Long,
-            KeyWords::Register,
-            KeyWords::Restrict,
-            KeyWords::Return,
-            KeyWords::Short,
-            KeyWords::Signed,
-            KeyWords::Sizeof,
-            KeyWords::Static,
-            KeyWords::Struct,
-            KeyWords::Switch,
-            KeyWords::Typedef,
-            KeyWords::Union,
-            KeyWords::Unsigned,
             KeyWords::Void,
-            KeyWords::Volatile,
             KeyWords::While,
+            KeyWords::Return,
         ];
         let index = Token::key_word_index(k).unwrap();
 
@@ -205,40 +131,12 @@ impl Token {
 
     fn key_word_index(s: &str) -> Option<usize> {
         const KEY_WORDS: &'static [&'static str] = &[
-            "auto",
-            "break",
-            "case",
-            "char",
-            "const",
-            "continue",
-            "default",
-            "do",
-            "double",
-            "else",
-            "enum",
-            "extern",
-            "float",
-            "for",
-            "goto",
             "if",
-            "inline",
+            "else",
             "int",
-            "long",
-            "register",
-            "restrict",
-            "return",
-            "short",
-            "signed",
-            "sizeof",
-            "static",
-            "struct",
-            "switch",
-            "typedef",
-            "union",
-            "unsigned",
             "void",
-            "volatile",
             "while",
+            "return",
         ];
 
         KEY_WORDS.iter().position(|&x| x == s)
@@ -253,8 +151,6 @@ impl Display for Token {
             &Token::Semicolon => write!(f, "semicolon:\t ';'"),
             &Token::Asterisk => write!(f, "asterisk:\t '*'"),
             &Token::Comma => write!(f, "comma:\t\t ','"),
-            &Token::Dot => write!(f, "dot:\t\t '.'"),
-            &Token::LiteralStr(ref s) => write!(f, "literal:\t {}", s),
             &Token::Bracket(ref b) => write!(f, "bracket:\t {:?}", b),
             &Token::Number(ref n) => write!(f, "number:\t\t {:?}", n),
             &Token::Comment(ref s) => write!(f, "comment:\t {}", s),
@@ -268,9 +164,11 @@ impl Display for Token {
 
 #[test]
 fn test_keywords() {
-    assert!(is_keywords("struct"));
-    assert!(is_keywords("unsigned"));
+    assert!(!is_keywords("struct"));
+    assert!(!is_keywords("unsigned"));
     assert!(!is_keywords("bool"));
+    assert!(is_keywords("int"));
+    assert!(is_keywords("void"));
 }
 
 #[test]

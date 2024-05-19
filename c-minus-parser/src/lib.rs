@@ -1,14 +1,19 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+pub mod symbol_parser;
+
+pub mod syntax_tree;
+mod parser;
+
+#[derive(Debug)]
+pub enum ParseError {
+    SyntaxError,
+    SemanticError,
+    MultiDefineError,
+    UndefinedSymbol,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+#[derive(Debug)]
+pub struct ParseErrInfo {
+    err_type: ParseError,
 }
+
+type ParserResult = Result<(), ParseErrInfo>;

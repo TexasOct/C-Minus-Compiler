@@ -20,27 +20,20 @@ impl<I: Read> MinusLexer<I> {
     }
 
     fn parse(&mut self) -> LexerResult {
-        while let Some(c) = self.peek() {
+        if let Some(c) = self.peek() {
             return match c {
                 b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.parse_string(),
                 b'0'..=b'9' => self.parse_number(),
                 b'/' => self.parse_slash(),
                 b'+' => self.parse_add(),
                 b'-' => self.parse_minus(),
-                b'#' => self.parse_preprocessor(),
                 b'=' => self.parse_equal(),
-                b'"' => self.parse_literal_str(),
-                b'&' => self.parse_and(),
-                b'|' => self.parse_or(),
                 b'>' => self.parse_greater(),
                 b'<' => self.parse_less(),
                 b'!' => self.parse_not(),
                 b';' => self.convert_char(Token::Semicolon),
                 b'*' => self.convert_char(Token::Asterisk),
                 b',' => self.convert_char(Token::Comma),
-                b'.' => self.convert_char(Token::Dot),
-                b'^' => self.convert_char(Token::Operator(Operators::Xor)),
-                b'~' => self.convert_char(Token::Operator(Operators::Not)),
                 b'(' => self.convert_char(Token::Bracket(Brackets::LeftParenthesis)),
                 b')' => self.convert_char(Token::Bracket(Brackets::RightParenthesis)),
                 b'[' => self.convert_char(Token::Bracket(Brackets::LeftSquareBracket)),
@@ -64,7 +57,7 @@ impl<I: Read> MinusLexer<I> {
     fn parse_greater(&mut self) -> LexerResult {
         self.bump();
 
-        return match self.peek() {
+        match self.peek() {
             Some(b'=') => self.convert_char(Token::Operator(Operators::GreaterEqual)),
             _ => Ok(Token::Operator(Operators::Greater)),
         }
@@ -73,7 +66,7 @@ impl<I: Read> MinusLexer<I> {
     fn parse_less(&mut self) -> LexerResult {
         self.bump();
 
-        return match self.peek() {
+        match self.peek() {
             Some(b'=') => self.convert_char(Token::Operator(Operators::LessEqual)),
             _ => Ok(Token::Operator(Operators::Less)),
         }
@@ -82,58 +75,10 @@ impl<I: Read> MinusLexer<I> {
     fn parse_not(&mut self) -> LexerResult {
         self.bump();
 
-        return match self.peek() {
+        match self.peek() {
             Some(b'=') => self.convert_char(Token::Operator(Operators::NotEqual)),
             _ => Ok(Token::Operator(Operators::LogicNot)),
         }
-    }
-
-    fn parse_and(&mut self) -> LexerResult {
-        self.bump();
-
-        match self.peek() {
-            Some(b'&') => return self.convert_char(Token::Operator(Operators::LogicAnd)),
-            _ => {},
-        }
-
-        Ok(Token::Operator(Operators::And))
-    }
-
-    fn parse_or(&mut self) -> LexerResult {
-        self.bump();
-
-        match self.peek() {
-            Some(b'|') => return self.convert_char(Token::Operator(Operators::LogicOr)),
-            _ => {},
-        }
-
-        Ok(Token::Operator(Operators::Or))
-    }
-
-    fn parse_literal_str(&mut self) -> LexerResult {
-        self.bump();
-        let mut buf = "\"".to_owned();
-
-        while let Some(c) = self.next() {
-            match c {
-                b'\\' => {
-                    match self.next() {
-                        Some(b'n') => buf.push('\n'),
-                        Some(b'"') => buf.push('"'),
-                        Some(b'\\') => buf.push('\\'),
-                        Some(c) => return Err(LexerError::UnexpectedChar(c as char, vec!['n', '"', '\\'])),
-                        _ => break,
-                    }
-                },
-                b'"' => {
-                    buf.push('"');
-                    return self.convert_char(Token::LiteralStr(buf));
-                },
-                _ => buf.push(c as char),
-            }
-        }
-
-        Err(LexerError::UnexpectEnd)
     }
 
     fn parse_minus(&mut self) -> LexerResult {
@@ -155,19 +100,6 @@ impl<I: Read> MinusLexer<I> {
         } else {
             Ok(Token::Operator(Operators::Assign))
         }
-    }
-
-    fn parse_preprocessor(&mut self) -> LexerResult {
-        let mut buf = String::new();
-
-        while let Some(c) = self.next() {
-            match c {
-                b'\n' | b'\r' => break,
-                _ => buf.push(c as char),
-            }
-        }
-
-        Ok(Token::Preprocessor(buf))
     }
 
     fn parse_string(&mut self) -> LexerResult {
@@ -208,8 +140,7 @@ impl<I: Read> MinusLexer<I> {
     fn parse_add(&mut self) -> LexerResult {
         self.bump();
 
-        match self.peek() {
-            Some(c) => match c {
+        match self.peek() {            Some(c) => match c {
                 b'+' => {
                     self.bump();
                     Ok(Token::Operator(Operators::DoubleAdd))
@@ -278,7 +209,7 @@ impl<I: Read> MinusLexer<I> {
     }
 
     fn bump(&mut self) {
-        let _ = self.next();
+        self.next();
     }
 
     fn next(&mut self) -> Option<u8> {
@@ -393,51 +324,6 @@ mod test {
 
         let mut lexer = MinusLexer::new(s.as_bytes());
         assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Comment(source.to_owned()));
-        assert_eq!(Iterator::next(&mut lexer), None);
-    }
-
-    #[test]
-    fn test_literal_str() {
-        let src = r#""this is literal \"String\".""#;
-        let dst = "\"this is literal \"String\".\"".to_owned();
-
-        let mut lexer = MinusLexer::new(src.as_bytes());
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::LiteralStr(dst));
-        assert_eq!(Iterator::next(&mut lexer), None);
-
-        let src = r#""with escape \n character \\""#;
-        let dst = "\"with escape \n character \\\"".to_owned();
-
-        let mut lexer = MinusLexer::new(src.as_bytes());
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::LiteralStr(dst));
-        assert_eq!(Iterator::next(&mut lexer), None);
-    }
-
-    #[test]
-    fn test_struct_define() {
-        let src = "
-    struct {
-        /* field a */
-        int a_;
-        // field b
-        unsigned int b0;
-    };
-    ";
-
-        let mut lexer = MinusLexer::new(src.as_bytes());
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::KeyWord(KeyWords::Struct));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Bracket(Brackets::LeftCurlyBracket));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Comment("/* field a */".to_owned()));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::KeyWord(KeyWords::Int));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Identifier("a_".to_owned(), Type::NoType));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Semicolon);
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Comment("// field b".to_owned()));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::KeyWord(KeyWords::Unsigned));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::KeyWord(KeyWords::Int));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Identifier("b0".to_owned(), Type::NoType));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Semicolon);
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Bracket(Brackets::RightCurlyBracket));
-        assert_eq!(Iterator::next(&mut lexer).unwrap(), Token::Semicolon);
         assert_eq!(Iterator::next(&mut lexer), None);
     }
 
