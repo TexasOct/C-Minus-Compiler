@@ -1,0 +1,7 @@
+[package]
+name = "c_minus_parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+c_minus_token = { path = "../c-minus-token" }

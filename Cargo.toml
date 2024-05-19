@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "c-minus-lexer",
+    "c-minus-parser",
+    "c-minus-token",
+]
+
+[package]
+name = "C-Minus-Compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
