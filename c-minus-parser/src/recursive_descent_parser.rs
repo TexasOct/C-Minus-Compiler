@@ -29,12 +29,6 @@ macro_rules! insert_type {
     };
 }
 
-macro_rules! replace {
-    ($tree: expr, $root: expr, $type: expr) => {
-        $tree.get_mut($root).unwrap().replace_data($type)
-    }
-}
-
 #[derive(Debug)]
 pub struct RecursiveDescentParser {
     tokens: Vec<Rc<Token>>,
@@ -85,64 +79,24 @@ impl RecursiveDescentParser {
     }
 
     fn match_bool_expr(&mut self, root: &NodeId) -> bool {
-        self.match_bool_expr_equal(root) &&
-            self.match_bool_expr_equal_fix(root)
-    }
+        loop {
+            if !self.match_expr(root) {break}
 
-    fn match_bool_expr_equal(&mut self, root: &NodeId) -> bool {
-        self.match_bool_expr_cmp(root) &&
-            self.match_bool_expr_equal_fix(root)
-    }
+            match self.match_cmp_equal_op() {
+                Some(tok) => {
+                    let id = insert!(self.tree, root, tok);
 
-    fn match_bool_expr_equal_fix(&mut self, root: &NodeId) -> bool {
-        if let Some(tok) = self.match_equal_op() {
-            let id = insert!(self.tree, root, tok);
+                    if self.match_expr(root) {
+                        return true;
+                    }
 
-            if self.match_bool_expr_cmp(root) &&
-                self.match_bool_expr_equal_fix(root) {
-                return true;
+                    self.tree.remove_node(id, DropChildren).unwrap();
+                    break
+                }
+                None => break,
             }
-
-            self.tree.remove_node(id, DropChildren).unwrap();
-            return false;
         }
 
-        true
-    }
-
-    fn match_bool_expr_cmp(&mut self, root: &NodeId) -> bool {
-        self.match_bool_expr_factor(root) &&
-            self.match_bool_expr_cmp_fix(root)
-    }
-
-    fn match_bool_expr_cmp_fix(&mut self, root: &NodeId) -> bool {
-        if let Some(tok) = self.match_cmp_op() {
-            let id = insert!(self.tree, root, tok);
-
-            if self.match_bool_expr_factor(root) &&
-                self.match_bool_expr_cmp_fix(root) {
-                return true;
-            }
-
-            self.tree.remove_node(id, DropChildren).unwrap();
-            return false;
-        }
-
-        true
-    }
-
-    fn match_bool_expr_factor(&mut self, root: &NodeId) -> bool {
-        let cur = self.current;
-        let self_id = insert_type!(self.tree, root, SyntaxType::BooleanExpr);
-
-        if self.match_expr(&self_id) {
-            replace!(self.tree, &self_id, Expr);
-            self.adjust_single_child(self_id);
-            return true;
-        }
-
-        self.current = cur;
-        self.tree.remove_node(self_id, DropChildren).unwrap();
         false
     }
 
@@ -682,27 +636,15 @@ impl RecursiveDescentParser {
         return true;
     }
 
-    // > | >= | < | <=
-    fn match_cmp_op(&mut self) -> TokenResult {
+    // > | >= | < | <= | == | !=
+    fn match_cmp_equal_op(&mut self) -> TokenResult {
         if self.current >= self.tokens.len() { return None; }
 
         return match *self.tokens[self.current] {
             Operator(Operators::Greater) |
             Operator(Operators::GreaterEqual) |
             Operator(Operators::Less) |
-            Operator(Operators::LessEqual) => {
-                self.current += 1;
-                self.copy_previous()
-            },
-            _ => None,
-        }
-    }
-
-    // == | !=
-    fn match_equal_op(&mut self) -> TokenResult {
-        if self.current >= self.tokens.len() { return None; }
-
-        return match *self.tokens[self.current] {
+            Operator(Operators::LessEqual) |
             Operator(Operators::Equal) |
             Operator(Operators::NotEqual) => {
                 self.current += 1;
