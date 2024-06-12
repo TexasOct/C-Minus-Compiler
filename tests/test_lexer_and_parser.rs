@@ -71,6 +71,7 @@ void main (void) {
         while (i < 10) {
             output(x[i]);
             i = i + 1;
+            i + 10;
         }
     }
 }

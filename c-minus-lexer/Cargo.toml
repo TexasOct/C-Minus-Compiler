@@ -6,10 +6,3 @@ edition = "2021"
 [dependencies]
 c_minus_token = { path = "../c-minus-token" }
 
-[[example]]
-name = "simple"
-path = "./examples/simple.rs"
-
-[features]
-regex = []
-

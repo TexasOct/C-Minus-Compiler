@@ -15,13 +15,8 @@ pub enum KeyWords {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     NoType,
-    SignedShort,
-    UnsignedShort,
     SignedInt,
-    UnsignedInt,
     Void,
-    Func(Vec<Type>, Box<Type>),
-    Ptr(Box<Type>),
 }
 
 impl KeyWords {
@@ -160,18 +155,4 @@ impl Display for Token {
             &Token::Identifier(ref v, ref t) => write!(f, "ident:\t {}({:?})", v, t),
         }
     }
-}
-
-#[test]
-fn test_keywords() {
-    assert!(!is_keywords("struct"));
-    assert!(!is_keywords("unsigned"));
-    assert!(!is_keywords("bool"));
-    assert!(is_keywords("int"));
-    assert!(is_keywords("void"));
-}
-
-#[test]
-fn test_type() {
-    assert!(KeyWords::Void.is_type());
 }

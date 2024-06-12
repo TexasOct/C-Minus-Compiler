@@ -12,7 +12,6 @@ use id_tree::RemoveBehavior::*;
 use std::rc::Rc;
 use c_minus_lexer::Lexer;
 use c_minus_token::KeyWords::Void;
-use crate::symbol_checker::SymbolChecker;
 use crate::syntax_tree::SyntaxType::Expr;
 
 type TokenResult = Option<Rc<Token>>;
@@ -69,7 +68,6 @@ impl RecursiveDescentParser {
         self.tree.traverse_pre_order(id).unwrap()
     }
 
-    #[cfg(debug_assertions)]
     pub fn lexer_end(&self) -> bool {
         self.current == self.tokens.len()
     }
@@ -80,13 +78,13 @@ impl RecursiveDescentParser {
 
     fn match_bool_expr(&mut self, root: &NodeId) -> bool {
         loop {
-            if !self.match_expr(root) {break}
+            if !self.match_simple_expr(root) { break }
 
-            match self.match_cmp_equal_op() {
+            match self.match_relop() {
                 Some(tok) => {
                     let id = insert!(self.tree, root, tok);
 
-                    if self.match_expr(root) {
+                    if self.match_simple_expr(root) {
                         return true;
                     }
 
@@ -123,7 +121,6 @@ impl RecursiveDescentParser {
         self.match_variable_define(root) && self.term(Semicolon)
     }
 
-    // variable_define = type variable_list
     fn match_variable_define(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::VariableDefine);
@@ -141,12 +138,11 @@ impl RecursiveDescentParser {
         return false;
     }
 
-    // variable_list = variable | variable , variable_list
     fn match_variable_list(&mut self, root: &NodeId) -> bool {
-        if self.match_array(root) {}
-        else if let Some(v) = self.match_identifier() {
-            insert!(self.tree, root, v.clone());
-        }
+
+        if self.match_array(root, true) {}
+        else if self.match_identifier(root) {}
+
 
         if self.term(Comma) {
             self.match_variable_list(root)
@@ -155,9 +151,12 @@ impl RecursiveDescentParser {
         }
     }
 
-    //// expr = expr add_op expr_mul
-    ///      -> expr_mul expr_fix
-    fn match_expr(&mut self, root: &NodeId) -> bool {
+    fn match_simple_expr(&mut self, root: &NodeId) -> bool {
+        if self.match_variable_define_stmt(root)
+            || self.match_func_call(root) {
+            return true;
+        }
+
         if self.match_expr_mul(root) {
             return self.match_expr_fix(root);
         }
@@ -165,7 +164,6 @@ impl RecursiveDescentParser {
         false
     }
 
-    /// expr_fix = add_op expt_mul expr_fix | epsilon
     fn match_expr_fix(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
 
@@ -193,8 +191,6 @@ impl RecursiveDescentParser {
         false
     }
 
-    /// expr_mul = expr_mul mul_op expr_factor
-    ///         -> expr_factor expr_mul_fix
     fn match_expr_mul(&mut self, root: &NodeId) -> bool {
         if self.match_expr_factor(root) {
             return self.match_expr_mul_fix(root);
@@ -227,7 +223,7 @@ impl RecursiveDescentParser {
         loop {
             // (expr)
             if self.term(Bracket(Brackets::LeftParenthesis)) {
-                if self.match_expr(root) {
+                if self.match_simple_expr(root) {
                     if self.term(Bracket(Brackets::RightParenthesis)) {
                         return true;
                     }
@@ -235,18 +231,18 @@ impl RecursiveDescentParser {
                 break;
             }
 
-            // match func_call
+            // func_call
             if self.match_func_call(root) {
                 return true;
             }
 
-            // match array
-            if self.match_array(root) {
+            // variable
+            if self.match_variable(root) {
                 return true;
             }
 
-            // ident or expr
-            if self.match_expr_ident(root) {
+            // NUM
+            if self.match_number(root) {
                 return true;
             }
 
@@ -257,36 +253,26 @@ impl RecursiveDescentParser {
         false
     }
 
-    // - `stmt_factor`
+
+    // stmt -> expr_stmt| compound_stmt | selection_stmt | iteration_stmt | return_stmt
     fn match_stmt(&mut self, root: &NodeId) -> bool {
-        self.match_stmt_factor(root)
+        self.match_expr_stmt(root) ||
+            self.match_compound_stmt(root) ||
+            self.match_selection_stmt(root) ||  // - `if_stmt`
+            self.match_iteration_stmt(root) ||  // - `while_loop`
+            self.match_return_stmt(root) // return_stmt`
     }
 
-    // - `stmt_single` `;`
-    // - `stmt_block`
-    // - `stmt_control`
-    // - `;`
-    fn match_stmt_factor(&mut self, root: &NodeId) -> bool {
-        self.match_stmt_block(root) ||
-        self.match_stmt_control(root) ||
-        self.match_stmt_single(root) && self.term(Semicolon) ||
-        self.term(Semicolon)
+    fn match_expr_stmt(&mut self, root: &NodeId) -> bool {
+        // expr_stmt ->  expr; | expr
+        self.match_expr_(root) && self.term(Semicolon) ||
+            self.term(Semicolon)
     }
 
-    // - `assign_stmt`
-    // - `return_stmt`
-    fn match_stmt_single(&mut self, root: &NodeId) -> bool {
+    //  `assign_stmt`
+    fn match_expr_(&mut self, root: &NodeId) -> bool {
         self.match_assign_stmt(root) ||
-            self.match_return_stmt(root) ||
-            self.match_variable_define_stmt(root) ||
-            self.match_func_call(root)
-    }
-
-    // - `if_stmt`
-    // - `while_loop`
-    fn match_stmt_control(&mut self, root: &NodeId) -> bool {
-        self.match_if_stmt(root) ||
-            self.match_while_loop(root)
+            self.match_simple_expr(root)
     }
 
     fn match_stmt_list(&mut self, root: &NodeId) -> bool {
@@ -295,7 +281,7 @@ impl RecursiveDescentParser {
         true
     }
 
-    fn match_stmt_block(&mut self, root: &NodeId) -> bool {
+    fn match_compound_stmt(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::StmtBlock);
 
@@ -318,7 +304,7 @@ impl RecursiveDescentParser {
     }
 
     // `while` `(` `bool_expr` `)` `stmt`
-    fn match_while_loop(&mut self, root: &NodeId) -> bool {
+    fn match_iteration_stmt(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::WhileLoop);
 
@@ -346,7 +332,7 @@ impl RecursiveDescentParser {
         false
     }
 
-    // assign_stmt = left_value = right_value
+    // assign_stmt = var = expression
     fn match_assign_stmt(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::AssignStmt);
@@ -369,8 +355,7 @@ impl RecursiveDescentParser {
         false
     }
 
-    /// if_stmt = if ( expr | bool_expr ) stmt else stmt
-    fn match_if_stmt(&mut self, root: &NodeId) -> bool {
+    fn match_selection_stmt(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
 
         loop {
@@ -409,7 +394,6 @@ impl RecursiveDescentParser {
         false
     }
 
-    /// `return` `return_type`
     fn match_return_stmt(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::ReturnStmt);
@@ -417,6 +401,7 @@ impl RecursiveDescentParser {
         loop {
             if !self.term(KeyWord(KeyWords::Return)) { break; }
             if !self.match_return_type(&self_id) { break; }
+            if !self.term(Semicolon) { break; }
 
             return true;
         }
@@ -436,26 +421,23 @@ impl RecursiveDescentParser {
         true
     }
 
-    /// left_value = ident | ident\[expr\]
     fn match_left_value(&mut self, root: &NodeId) -> bool {
-        if self.match_array(root) {
+        if self.match_array(root, true) {
             return true;
         }
 
-        if let Some(id) = self.match_identifier() {
-            insert!(self.tree, root, id);
+        if self.match_identifier(root) {
             return true;
         }
 
         return false;
     }
 
-    /// right_value = bool_expr
     fn match_right_value(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, Expr);
 
-        if self.match_expr(&self_id) {
+        if self.match_simple_expr(&self_id) {
             self.adjust_single_child(self_id);
             return true;
         }
@@ -465,9 +447,8 @@ impl RecursiveDescentParser {
         return false
     }
 
-    /// `func_ret_type` `func_name` `(` `func_param_list` `)` `;`
-    #[allow(dead_code)]
-    fn match_function_declare(&mut self, root: &NodeId) -> bool {
+    // - `func_ret_type` `func_name` `(` `func_param_list` `)` `{` `func_body` `}`
+    fn match_function_define(&mut self, root: &NodeId) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::FuncDeclare);
 
@@ -479,41 +460,7 @@ impl RecursiveDescentParser {
             };
 
             // func_name
-            match self.match_identifier() {
-                Some(id) => insert!(self.tree, self_id, id),
-                _ => break,
-            };
-
-            if !self.term(Bracket(Brackets::LeftParenthesis)) { break; }
-            if !self.match_func_param_list(&self_id, true) { break; }
-            if !self.term(Bracket(Brackets::RightParenthesis)) { break; }
-            if !self.term(Semicolon) { break; }
-
-            return true;
-        }
-
-        self.current = cur;
-        self.tree.remove_node(self_id, DropChildren).unwrap();
-        false
-    }
-
-    // - `func_ret_type` `func_name` `(` `func_param_list` `)` `{` `func_body` `}`
-    fn match_function_define(&mut self, root: &NodeId) -> bool {
-        let cur = self.current;
-        let self_id = insert_type!(self.tree, root, SyntaxType::FuncDefine);
-
-        loop {
-            // type
-            match self.match_type() {
-                Some(t) => insert!(self.tree, self_id, t),
-                _ => break,
-            };
-
-            // func_name
-            match self.match_identifier() {
-                Some(id) => insert!(self.tree, self_id, id),
-                _ => break,
-            };
+            if !self.match_identifier(&self_id) { break; }
 
             if !self.term(Bracket(Brackets::LeftParenthesis)) { break; }
             if !self.match_func_param_list(&self_id, false) { break; }
@@ -570,16 +517,15 @@ impl RecursiveDescentParser {
                 _ => break,
             };
 
-            if self.match_array_in_param(&self_id) {
+            if self.match_array(&self_id, false) {
                 return true
             }
 
-            match self.match_identifier() {
-                Some(id) => insert!(self.tree, self_id, id),
-                _ => break,
-            };
+            if self.match_identifier(&self_id) {
+                return true
+            }
 
-            return true
+            break
         }
 
         self.current = cur;
@@ -594,10 +540,7 @@ impl RecursiveDescentParser {
 
         loop {
             // func_name
-            match self.match_identifier() {
-                Some(id) => insert!(self.tree, self_id, id),
-                _ => break,
-            };
+            if !self.match_identifier(&self_id) { break; }
 
             if !self.term(Bracket(Brackets::LeftParenthesis)) { break; }
             if !self.match_func_arg_list(&self_id) { break; }
@@ -611,9 +554,6 @@ impl RecursiveDescentParser {
         false
     }
 
-    /// `func_arg` `func_arg_list_tail`
-    ///
-    /// `epsilon`
     fn match_func_arg_list(&mut self, root: &NodeId) -> bool {
         while self.match_func_arg(root) {
             if !self.term(Comma) {
@@ -627,7 +567,7 @@ impl RecursiveDescentParser {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::FuncArg);
 
-        if !self.match_expr(&self_id) {
+        if !self.match_simple_expr(&self_id) {
             self.current = cur;
             self.tree.remove_node(self_id, DropChildren).unwrap();
             return false;
@@ -636,15 +576,15 @@ impl RecursiveDescentParser {
         return true;
     }
 
-    // > | >= | < | <= | == | !=
-    fn match_cmp_equal_op(&mut self) -> TokenResult {
+    //  < | <= | > | >= | == | !=
+    fn match_relop(&mut self) -> TokenResult {
         if self.current >= self.tokens.len() { return None; }
 
         return match *self.tokens[self.current] {
-            Operator(Operators::Greater) |
-            Operator(Operators::GreaterEqual) |
             Operator(Operators::Less) |
             Operator(Operators::LessEqual) |
+            Operator(Operators::Greater) |
+            Operator(Operators::GreaterEqual) |
             Operator(Operators::Equal) |
             Operator(Operators::NotEqual) => {
                 self.current += 1;
@@ -678,33 +618,17 @@ impl RecursiveDescentParser {
         None
     }
 
-    fn match_expr_ident(&mut self, root: &NodeId) -> bool {
-        if let Some(t) = self.match_identifier() {
-            insert!(self.tree, root, t);
-            return true;
-        }
-        if let Some(t) = self.match_number() {
-            insert!(self.tree, root, t);
-            return true;
-        }
-
-        self.match_array(root)
-    }
-
-    fn match_array(&mut self, root: &NodeId) -> bool {
+    fn match_array(&mut self, root: &NodeId, not_fun_param_define: bool) -> bool {
         let cur = self.current;
         let self_id = insert_type!(self.tree, root, SyntaxType::Array);
 
         loop {
             // array name
-            match self.match_identifier() {
-                Some(id) => insert!(self.tree, self_id, id),
-                _ => break,
-            };
+            if !self.match_identifier(&self_id) { break; }
 
             // array_bracket
             if !self.term(Bracket(Brackets::LeftSquareBracket)) { break; }
-            if !self.match_expr(&self_id) { break; }
+            if  not_fun_param_define && !self.match_simple_expr(&self_id) { break; }
             if !self.term(Bracket(Brackets::RightSquareBracket)) { break; }
 
             return true;
@@ -721,10 +645,7 @@ impl RecursiveDescentParser {
 
         loop {
             // array name
-            match self.match_identifier() {
-                Some(id) => insert!(self.tree, self_id, id),
-                _ => break,
-            };
+            if !self.match_identifier(&self_id) { break; }
 
             // array_bracket
             if !self.term(Bracket(Brackets::LeftSquareBracket)) { break; }
@@ -738,27 +659,40 @@ impl RecursiveDescentParser {
         false
     }
 
-    /// match_identify = identify
-    fn match_identifier(&mut self) -> TokenResult {
-        if self.current >= self.tokens.len() { return None; }
+    fn match_identifier(&mut self, root: &NodeId) -> bool {
+        if self.current >= self.tokens.len() { return false; }
 
         if let Identifier(_, _) = *self.tokens[self.current] {
             self.current += 1;
-            return self.copy_previous();
+            insert!(self.tree, root, self.copy_previous().unwrap());
+            return true;
         }
 
-        return None;
+        false
     }
 
-    fn match_number(&mut self) -> TokenResult {
-        if self.current >= self.tokens.len() { return None; }
+    fn match_number(&mut self, root: &NodeId) -> bool {
+        if self.current >= self.tokens.len() { return false; }
 
         if let Number(_) = *self.tokens[self.current] {
             self.current += 1;
-            return self.copy_previous();
+            insert!(self.tree, root, self.copy_previous().unwrap());
+            return true;
         }
 
-        return None;
+        false
+    }
+
+    fn match_variable(&mut self, root: &NodeId) -> bool {
+        if self.match_array(root, true) {
+            return true
+        }
+
+        if self.match_identifier(root) {
+            return true;
+        }
+
+        false
     }
 
     fn adjust_single_child(&mut self, node: NodeId) {
@@ -808,10 +742,11 @@ impl Parser for RecursiveDescentParser {
     fn run(&mut self) -> ParserResult {
         let ref id = self.root_id();
         let mut last_pos = self.tokens.len();
-
+        let mut error_handle: ParserResult = Ok(());
         loop {
             if self.current == self.tokens.len() { break; }
-            if self.current == last_pos {
+
+            if self.current == last_pos && error_handle.is_err() {
                 let err_msg =
                     self.tokens[last_pos].as_ref().to_string() + " " + &*last_pos.to_string();
                 return Err(ParseErrInfo {
@@ -824,7 +759,7 @@ impl Parser for RecursiveDescentParser {
                     self.match_global_variable_define(id);
         }
 
-        SymbolChecker::new(&mut self.tree).check()
+        Ok(())
     }
 
     fn syntax_tree(&self) -> &SyntaxTree {
@@ -931,7 +866,7 @@ mod test {
             "a[1] + a[2]",
             "func(1, status) + 10"
         ];
-        test_func!(tests, match_expr);
+        test_func!(tests, match_simple_expr);
 
         let test = "1 * 1 * 1 * 1";
         let (mut tree, root_id) = tree!();
@@ -943,7 +878,7 @@ mod test {
         insert!(tree, root_id, Rc::new(Token::Operator(Operators::Mul)));
         insert!(tree, root_id, Rc::new(Token::Number(Numbers::from_str("1"))));
 
-        test_tree!(test, match_expr, tree);
+        test_tree!(test, match_simple_expr, tree);
     }
 
     #[test]
@@ -968,7 +903,7 @@ mod test {
     #[test]
     fn test_if_stmt() {
         let tests = vec!["if (x == 1) x = 1; else x = 2;"];
-        test_func!(tests, match_if_stmt);
+        test_func!(tests, match_selection_stmt);
 
         // if-else
         let (mut tree, root_id) = tree!();
@@ -985,7 +920,7 @@ mod test {
         insert!(tree, assign, Rc::new(Token::Number(Numbers::from_str("2"))));
 
         let stmt = "if(x==1)x=1;else\nx=2;";
-        test_tree!(stmt, match_if_stmt, tree);
+        test_tree!(stmt, match_selection_stmt, tree);
 
         // if-if-else
         let (mut tree, root_id) = tree!();
@@ -1006,7 +941,7 @@ mod test {
         insert!(tree, assign, Rc::new(Token::Number(Numbers::from_str("2"))));
 
         let stmt = "if(x>1)if(x!=2)x=3;else\nx=2;";
-        test_tree!(stmt, match_if_stmt, tree);
+        test_tree!(stmt, match_selection_stmt, tree);
     }
 
     #[test]
@@ -1018,6 +953,6 @@ mod test {
     #[test]
     fn test_loop_list() {
         let tests = vec!["while(x < 0){}"];
-        test_func!(tests, match_while_loop);
+        test_func!(tests, match_iteration_stmt);
     }
 }

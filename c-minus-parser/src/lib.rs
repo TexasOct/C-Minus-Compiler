@@ -1,7 +1,5 @@
 pub mod syntax_tree;
 pub mod recursive_descent_parser;
-mod symbol_checker;
-mod symbol_manager;
 
 use id_tree::NodeId;
 use crate::syntax_tree::SyntaxTree;
@@ -28,7 +26,6 @@ pub trait Parser {
 }
 
 fn print_space(indentation: usize) {
-    // for _ in 0..indentation { print!("  "); }
     for i in 0..indentation {
         match i % 4 {
             0 => print!("|  "),

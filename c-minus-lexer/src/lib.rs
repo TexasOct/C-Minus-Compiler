@@ -1,8 +1,5 @@
 pub mod lexer;
 
-#[cfg(feature = "regex")]
-pub mod regex_lexer;
-
 use c_minus_token::Token;
 
 type LexerResult = Result<Token, LexerError>;

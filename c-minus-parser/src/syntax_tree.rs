@@ -18,7 +18,6 @@ pub enum SyntaxType {
     ElseStmt,
     ReturnStmt,
     WhileLoop,
-    FuncDefine,
     FuncDeclare,
     FuncParam,
     FuncArg,
