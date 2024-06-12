@@ -76,28 +76,6 @@ impl RecursiveDescentParser {
         self.tree.root_node_id().unwrap().clone()
     }
 
-    fn match_bool_expr(&mut self, root: &NodeId) -> bool {
-        loop {
-            if !self.match_simple_expr(root) { break }
-
-            match self.match_relop() {
-                Some(tok) => {
-                    let id = insert!(self.tree, root, tok);
-
-                    if self.match_simple_expr(root) {
-                        return true;
-                    }
-
-                    self.tree.remove_node(id, DropChildren).unwrap();
-                    break
-                }
-                None => break,
-            }
-        }
-
-        false
-    }
-
     fn match_type(&mut self) -> TokenResult {
 
         if self.current >= self.tokens.len() { return None; }
@@ -152,8 +130,7 @@ impl RecursiveDescentParser {
     }
 
     fn match_simple_expr(&mut self, root: &NodeId) -> bool {
-        if self.match_variable_define_stmt(root)
-            || self.match_func_call(root) {
+        if self.match_variable_define_stmt(root) || self.match_func_call(root) {
             return true;
         }
 
@@ -192,7 +169,7 @@ impl RecursiveDescentParser {
     }
 
     fn match_expr_mul(&mut self, root: &NodeId) -> bool {
-        if self.match_expr_factor(root) {
+        if self.match_expr_rel(root) {
             return self.match_expr_mul_fix(root);
         }
 
@@ -212,6 +189,32 @@ impl RecursiveDescentParser {
             self.adjust_single_child(self_id);
 
             return self.match_expr_mul_fix(root);
+        }
+
+        true
+    }
+
+    fn match_expr_rel(&mut self, root: &NodeId) -> bool {
+        if self.match_expr_factor(root) {
+            return self.match_expr_rel_fix(root);
+        }
+
+        false
+    }
+
+    fn match_expr_rel_fix(&mut self, root: &NodeId) -> bool {
+        if let Some(tok) = self.match_relop() {
+            insert!(self.tree, root, tok);
+
+            let self_id = insert_type!(self.tree, root, Expr);
+            if !self.match_expr_factor(&self_id) {
+                self.tree.remove_node(self_id, DropChildren).unwrap();
+                return false;
+            }
+
+            self.adjust_single_child(self_id);
+
+            return self.match_expr_rel_fix(root);
         }
 
         true
@@ -265,12 +268,12 @@ impl RecursiveDescentParser {
 
     fn match_expr_stmt(&mut self, root: &NodeId) -> bool {
         // expr_stmt ->  expr; | expr
-        self.match_expr_(root) && self.term(Semicolon) ||
+        self.match_expr(root) && self.term(Semicolon) ||
             self.term(Semicolon)
     }
 
     //  `assign_stmt`
-    fn match_expr_(&mut self, root: &NodeId) -> bool {
+    fn match_expr(&mut self, root: &NodeId) -> bool {
         self.match_assign_stmt(root) ||
             self.match_simple_expr(root)
     }
@@ -315,8 +318,8 @@ impl RecursiveDescentParser {
             // `(`
             if !self.term(Bracket(Brackets::LeftParenthesis)) { break; }
 
-            // `bool_expr`
-            if !self.match_bool_expr(&self_id) { break; }
+            // `expr`
+            if !self.match_expr(&self_id) { break; }
 
             // ')'
             if !self.term(Bracket(Brackets::RightParenthesis)) { break; }
@@ -365,7 +368,7 @@ impl RecursiveDescentParser {
 
                 // ( bool_expr | expr ) stmt
                 if self.term(Bracket(Brackets::LeftParenthesis)) &&
-                    (self.match_assign_stmt(&if_id) || self.match_bool_expr(&if_id)) &&
+                    self.match_expr(&if_id) &&
                     self.term(Bracket(Brackets::RightParenthesis)) &&
                     self.match_stmt(&if_id) {
                     // else
@@ -400,7 +403,7 @@ impl RecursiveDescentParser {
 
         loop {
             if !self.term(KeyWord(KeyWords::Return)) { break; }
-            if !self.match_return_type(&self_id) { break; }
+            self.match_return_type(&self_id);
             if !self.term(Semicolon) { break; }
 
             return true;
@@ -411,14 +414,9 @@ impl RecursiveDescentParser {
         false
     }
 
-    // - `func_call`
-    // - `bool_expr`
     // - `expr`
     fn match_return_type(&mut self, root: &NodeId) -> bool {
-        let _ = self.match_func_call(root) ||
-            self.match_bool_expr(root);
-
-        true
+        self.match_expr(root)
     }
 
     fn match_left_value(&mut self, root: &NodeId) -> bool {
